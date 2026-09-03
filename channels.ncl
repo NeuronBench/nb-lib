@@ -1,0 +1,138 @@
+# Ion channel library. Each channel is checked against `nb.Channel`.
+#
+# Time constants are tagged records (`type = 'Gaussian`, `'LinearExp`, or
+# `'Instantaneous`), matching the simulator's serde representation.
+let only_k = { k = 1.0, na = 0.0, cl = 0.0, ca = 0.0 } in
+let only_na = { k = 0.0, na = 1.0, cl = 0.0, ca = 0.0 } in
+{
+  giant_squid = {
+    k | nb.Channel = {
+      ion_selectivity = only_k,
+      activation = {
+        gates = 4,
+        magnitude = { v_at_half_max_mv = -53.0, slope = 15.0 },
+        time_constant = {
+          type = 'Gaussian,
+          v_at_max_tau_mv = -79.0,
+          c_base = 1.1e-3,
+          c_amp = 4.7e-3,
+          sigma = 50.0,
+        },
+      },
+      inactivation = null,
+    },
+
+    na | nb.Channel = {
+      ion_selectivity = only_na,
+      activation = {
+        gates = 3,
+        magnitude = { v_at_half_max_mv = -40.0, slope = 15.0 },
+        time_constant = {
+          type = 'Gaussian,
+          v_at_max_tau_mv = -38.0,
+          c_base = 0.04e-3,
+          c_amp = 0.46e-3,
+          sigma = 30.0,
+        },
+      },
+      inactivation = {
+        gates = 1,
+        magnitude = { v_at_half_max_mv = -62.0, slope = -7.0 },
+        time_constant = {
+          type = 'Gaussian,
+          v_at_max_tau_mv = -67.0,
+          c_base = 1.2e-3,
+          c_amp = 7.4e-3,
+          sigma = 20.0,
+        },
+      },
+    },
+
+    leak | nb.Channel = {
+      ion_selectivity = { k = 0.0, na = 0.0, cl = 1.0, ca = 0.0 },
+      activation = null,
+      inactivation = null,
+    },
+  },
+
+  rat_thalamocortical = {
+    na_transient | nb.Channel = {
+      ion_selectivity = only_na,
+      activation = {
+        gates = 1,
+        magnitude = { v_at_half_max_mv = -30.0, slope = 5.5 },
+        time_constant = { type = 'Instantaneous },
+      },
+      inactivation = {
+        gates = 1,
+        magnitude = { v_at_half_max_mv = -70.0, slope = -5.8 },
+        time_constant = {
+          type = 'LinearExp,
+          coef = 3.0,
+          v_offset_mv = -40.0,
+          inner_coef = 0.03,
+        },
+      },
+    },
+
+    k_slow | nb.Channel = {
+      ion_selectivity = only_k,
+      activation = {
+        gates = 1,
+        magnitude = { v_at_half_max_mv = -3.0, slope = 10.0 },
+        time_constant = {
+          type = 'Gaussian,
+          v_at_max_tau_mv = -50.0,
+          c_base = 0.005,
+          c_amp = 0.047,
+          sigma = 0.030,
+        },
+      },
+      inactivation = {
+        gates = 1,
+        magnitude = { v_at_half_max_mv = -51.0, slope = -12.0 },
+        time_constant = {
+          type = 'Gaussian,
+          v_at_max_tau_mv = -50.0,
+          c_base = 0.36,
+          c_amp = 0.1,
+          sigma = 50.0,
+        },
+      },
+    },
+  },
+
+  rat_ca1_pyramidal = {
+    hcn_soma | nb.Channel = {
+      ion_selectivity = { na = 0.35, k = 0.65, cl = 0.0, ca = 0.0 },
+      activation = null,
+      inactivation = {
+        gates = 1,
+        magnitude = { v_at_half_max_mv = -82.0, slope = -9.0 },
+        time_constant = {
+          type = 'Gaussian,
+          v_at_max_tau_mv = -75.0,
+          c_base = 10.0e-3,
+          c_amp = 50.0e-3,
+          sigma = 20.0,
+        },
+      },
+    },
+
+    hcn_dendrite | nb.Channel = {
+      ion_selectivity = { na = 0.55, k = 0.45, cl = 0.0, ca = 0.0 },
+      activation = null,
+      inactivation = {
+        gates = 1,
+        magnitude = { v_at_half_max_mv = -90.0, slope = -8.5 },
+        time_constant = {
+          type = 'Gaussian,
+          v_at_max_tau_mv = -75.0,
+          c_base = 10.0e-3,
+          c_amp = 40.0e-3,
+          sigma = 20.0,
+        },
+      },
+    },
+  },
+}

@@ -1,0 +1,13 @@
+[package]
+name = "nb-lib-check"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Evaluates every file in nb-lib against the nb prelude contracts."
+
+[dependencies]
+nb-nickel = { path = "../../nb-nickel" }
+serde_json = "1"
+
+[lib]
+path = "src/lib.rs"
