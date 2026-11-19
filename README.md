@@ -38,3 +38,10 @@ default:
 
     cargo run --bin bevy
     NB_SCENE=../nb-lib/demos/refractory.ncl cargo run --bin bevy
+    NB_SCENE=../nb-lib/demos/onnx_clamp.ncl cargo run --bin bevy
+
+`onnx_clamp.ncl` couples an ONNX model (`models/voltage_clamp.onnx`) to the
+simulation. Scenes list models under `scene.models`, binding each graph
+input to voltages, time or constants and each output to injected current.
+Regenerate the models with
+`uv run --with onnx --with numpy python -I models/make_models.py`.
