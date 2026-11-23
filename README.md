@@ -39,9 +39,25 @@ default:
     cargo run --bin bevy
     NB_SCENE=../nb-lib/demos/refractory.ncl cargo run --bin bevy
     NB_SCENE=../nb-lib/demos/onnx_clamp.ncl cargo run --bin bevy
+    NB_SCENE=../nb-lib/demos/onnx_digits.ncl cargo run --bin bevy
+    NB_SCENE=../nb-lib/demos/onnx_mnist.ncl cargo run --bin bevy
 
 `onnx_clamp.ncl` couples an ONNX model (`models/voltage_clamp.onnx`) to the
 simulation. Scenes list models under `scene.models`, binding each graph
 input to voltages, time or constants and each output to injected current.
 Regenerate the models with
 `uv run --with onnx --with numpy python -I models/make_models.py`.
+
+`onnx_digits.ncl` runs a small digit classifier (`models/digits_mlp.onnx`,
+trained on scikit-learn's 8x8 digits) and injects each class probability
+into one of ten neurons, so the neuron for the recognized digit fires.
+Retrain with
+`uv run --with onnx --with numpy --with scikit-learn python -I models/make_digits.py`.
+
+`onnx_mnist.ncl` does the same with the ONNX model zoo's MNIST CNN
+(`models/mnist-12.onnx`, MIT license, from
+https://github.com/onnx/models) on 28x28 digits written as ASCII art: twenty
+MNIST test images, or your own drawing in the demo file. Regenerate the
+Softmax-wrapped model and the samples with
+`uv run --with onnx --with numpy python -I models/make_mnist.py`
+(it downloads the MNIST test set, about 1.6 MB, once).
