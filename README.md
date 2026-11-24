@@ -41,6 +41,7 @@ default:
     NB_SCENE=../nb-lib/demos/onnx_clamp.ncl cargo run --bin bevy
     NB_SCENE=../nb-lib/demos/onnx_digits.ncl cargo run --bin bevy
     NB_SCENE=../nb-lib/demos/onnx_mnist.ncl cargo run --bin bevy
+    NB_SCENE=../nb-lib/demos/onnx_mnist_neurons.ncl cargo run --release --bin bevy
 
 `onnx_clamp.ncl` couples an ONNX model (`models/voltage_clamp.onnx`) to the
 simulation. Scenes list models under `scene.models`, binding each graph
@@ -61,3 +62,18 @@ MNIST test images, or your own drawing in the demo file. Regenerate the
 Softmax-wrapped model and the samples with
 `uv run --with onnx --with numpy python -I models/make_mnist.py`
 (it downloads the MNIST test set, about 1.6 MB, once).
+
+`onnx_mnist_neurons.ncl` wires the same CNN into neurons at both ends and
+in the middle. Its input is a 28x28 retina of passive pixel cells that you
+paint in the `retina` canvas window (left-drag raises a cell's current,
+right-drag lowers it); the model samples their voltages each run. One
+channel of its last pooling layer drives the dendrite tips of each of four
+Allen Institute cells through `hidden` taps, and the class probabilities
+drive ten more. It has about 2,600 segments, so run it with `--release`.
+
+`neurons/allen_656411100.ncl` is a human cortical neuron from the Allen
+Cell Types Database (specimen 656411100,
+`neurons/swc/H17.03.010.11.13.01_656411100_m.swc`), decimated to 132 of its
+1497 points with every branch point and tip kept. Regenerate it, or
+decimate another SWC, with
+`python3 -I neurons/decimate_swc.py neurons/swc/<cell>.swc neurons/<name>.ncl [fraction]`.
