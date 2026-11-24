@@ -1,11 +1,22 @@
 # Spike-timing-dependent plasticity from biophysics. Two presynaptic cells
-# each synapse onto one postsynaptic cell through plastic NMDA/AMPA synapses
-# (see ../plasticity.ncl). Every `period` seconds, cell A fires `lead`
-# before the postsynaptic cell and cell B fires `lead` after it, so A's
-# glutamate is still bound to NMDA receptors when the postsynaptic spike
-# expels their Mg2+ (calcium soars: potentiation), while B's arrives after
-# the spike (calcium only reaches the depression range). Watch the
-# synapses' efficacy in the log (`synapse N: ... efficacy`).
+# each synapse onto one postsynaptic cell through plastic synapses with AMPA
+# and NMDA receptors and spine calcium channels (see ../plasticity.ncl).
+# Every `period` seconds cell A fires `lead` before the postsynaptic cell
+# and cell B fires `lead` after it:
+#
+# - A's glutamate is still bound to NMDA receptors when the postsynaptic
+#   spike expels their Mg2+: spine calcium soars past the potentiation
+#   threshold, and A strengthens (efficacy 0.4 -> about 0.49).
+# - B's glutamate arrives after the spike: only the spike's own VGCC
+#   calcium, in the depression band, so B weakens (0.4 -> about 0.35).
+#
+# Each protocol drives a synapse toward its own steady efficacy (the
+# Graupner–Brunel rule balances time above each threshold), so where the
+# synapses start decides whether that reads as strengthening or weakening;
+# 0.4 sits between A's and B's. Plastic synapses log their calcium peaks
+# and efficacy on the CPU backend; a larger step speeds things up:
+#
+#   NB_SIM_DT=1e-5 NB_SIM_BACKEND=cpu NB_SCENE=../nb-lib/demos/stdp_pairing.ncl cargo run --release --bin bevy
 let plasticity = import "../plasticity.ncl" in
 let default_swc_neuron = import "../default_swc_neuron.ncl" in
 # The small three-compartment cell of the digit demos: it rests near
@@ -48,9 +59,12 @@ let pulse = fun onset period =>
     } in
     let base = 0.02 in
     # These cells rest near -90 mV, where the Mg2+ block is tighter than at
-    # the library's -70 mV calibration: a lone presynaptic spike lifts spine
-    # calcium to about 0.3 µM, a pairing about three times that.
-    let thresholds = { depression = 0.25e-6, potentiation = 0.36e-6 } in
+    # the library's -70 mV calibration (and a bias current only makes them
+    # fire on their own). Measured here: a lone presynaptic spike lifts spine
+    # calcium to about 0.3 µM, a lone postsynaptic spike to about 0.65 µM.
+    # The thresholds go where the library puts them relative to those:
+    # depression between the two, potentiation just above the second.
+    let thresholds = { depression = 0.50e-6, potentiation = 0.68e-6 } in
     {
       # 0: cell A, 1: the postsynaptic cell, 2: cell B.
       neurons = [
@@ -61,13 +75,13 @@ let pulse = fun onset period =>
       synapses = [
         plasticity.synapse {
           pre_neuron = 0, pre_segment = 0, post_neuron = 1, post_segment = 0,
-          initial_efficacy = 0.5, time_constant_sec = params.learning_time_constant,
+          initial_efficacy = 0.4, time_constant_sec = params.learning_time_constant,
           depression_threshold_molar = thresholds.depression,
           potentiation_threshold_molar = thresholds.potentiation,
         },
         plasticity.synapse {
           pre_neuron = 2, pre_segment = 0, post_neuron = 1, post_segment = 0,
-          initial_efficacy = 0.5, time_constant_sec = params.learning_time_constant,
+          initial_efficacy = 0.4, time_constant_sec = params.learning_time_constant,
           depression_threshold_molar = thresholds.depression,
           potentiation_threshold_molar = thresholds.potentiation,
         },

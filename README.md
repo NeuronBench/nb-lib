@@ -42,7 +42,7 @@ default:
     NB_SCENE=../nb-lib/demos/onnx_digits.ncl cargo run --bin bevy
     NB_SCENE=../nb-lib/demos/onnx_mnist.ncl cargo run --bin bevy
     NB_SCENE=../nb-lib/demos/onnx_mnist_neurons.ncl cargo run --release --bin bevy
-    NB_SIM_BACKEND=cpu NB_SCENE=../nb-lib/demos/stdp_pairing.ncl cargo run --release --bin bevy
+    NB_SIM_DT=1e-5 NB_SIM_BACKEND=cpu NB_SCENE=../nb-lib/demos/stdp_pairing.ncl cargo run --release --bin bevy
 
 `onnx_clamp.ncl` couples an ONNX model (`models/voltage_clamp.onnx`) to the
 simulation. Scenes list models under `scene.models`, binding each graph
@@ -81,9 +81,11 @@ decimate another SWC, with
 
 `plasticity.ncl` builds glutamatergic synapses that learn from calcium:
 AMPA receptors (the plastic part), NMDA receptors with Mg2+ block and slow
-unbinding, a spine calcium pool, and the Graupner–Brunel calcium-threshold
-rule. `demos/stdp_pairing.ncl` pairs two presynaptic cells with one
-postsynaptic cell: the synapse whose spikes precede the postsynaptic spike
-keeps its strength, the one whose spikes follow it is erased. nb-sim logs
-each plastic synapse's calcium peak and efficacy on the CPU backend
-(`NB_SIM_BACKEND=cpu`); the GPU backend doesn't read synapse state back yet.
+unbinding, spine voltage-gated calcium channels, a spine calcium pool, and
+the Graupner–Brunel calcium-threshold rule. `demos/stdp_pairing.ncl` pairs
+two presynaptic cells with one postsynaptic cell: the synapse whose spikes
+precede the postsynaptic spike strengthens, the one whose spikes follow it
+weakens. nb-sim logs each plastic synapse's calcium peaks and efficacy on
+the CPU backend (`NB_SIM_BACKEND=cpu`); the GPU backend doesn't read
+synapse state back yet. `NB_SIM_DT=1e-5` (20x the default step) makes the
+demo learn in seconds.
