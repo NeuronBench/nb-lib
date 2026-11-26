@@ -25,7 +25,11 @@
 # input alone drives the network) and `stream` to 1 (images the realistic
 # cells never trained on). Learned weights survive slider changes.
 #
-#   NB_SIM_DT=1e-5 NB_SIM_BACKEND=cpu NB_SCENE=../nb-lib/demos/digits_transfer.ncl cargo run --release --bin bevy
+# Natively, a larger step and more steps per frame run about 0.26 simulated
+# seconds per second on the GPU (a pass over the 300 images in about 3
+# minutes):
+#
+#   NB_SIM_DT=1e-5 NB_STEPS_PER_FRAME=1000 NB_SCENE=../nb-lib/demos/digits_transfer.ncl cargo run --release --bin bevy
 let plasticity = import "../plasticity.ncl" in
 let default_swc_neuron = import "../default_swc_neuron.ncl" in
 let stream = import "../models/digit_stream.ncl" in
