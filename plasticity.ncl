@@ -120,4 +120,39 @@ let vgcc_receptor = {
         },
       },
     } | nb.Synapse,
+
+  # A plastic AMPA synapse under the phenomenological pair rule instead:
+  # spikes are crossings of -20 mV at either end, a presynaptic spike up to
+  # tens of ms before a postsynaptic one strengthens the synapse and one
+  # after it weakens it (Bi & Poo's window: 17 ms for potentiation, 34 ms
+  # for depression, depression slightly ahead overall so that uncorrelated
+  # firing drifts down). No NMDA, no calcium, no calibration per cell type.
+  # Optional: `potentiation` and `depression` (efficacy change of a
+  # simultaneous pairing, default 0.05 and 0.03), `initial_efficacy`
+  # (default 0.5) and `max_weight` (the AMPA conductance multiplier at
+  # efficacy 1, default 2).
+  stdp_synapse = fun args =>
+    {
+      pre_neuron = args.pre_neuron,
+      pre_segment = args.pre_segment,
+      post_neuron = args.post_neuron,
+      post_segment = args.post_segment,
+      synapse_membranes = {
+        cleft_solution = { k = 5.0e-3, na = 145.0e-3, cl = 110.0e-3, ca = 2.5e-3 },
+        presynaptic_pumps = [release],
+        postsynaptic_receptors = [ampa_receptor],
+        surface_area_square_mm = 1.0e-6,
+        transmitter_concentrations = { glutamate_molar = 1.0e-4, gaba_molar = 0.0 },
+        spike_timing = {
+          spike_threshold_mv = -20.0,
+          pre_trace_sec = 0.017,
+          post_trace_sec = 0.034,
+          potentiation = std.record.get_or "potentiation" 0.05 args,
+          depression = std.record.get_or "depression" 0.03 args,
+          initial_efficacy = std.record.get_or "initial_efficacy" 0.5 args,
+          weight_at_0 = 0.0,
+          weight_at_1 = std.record.get_or "max_weight" 2.0 args,
+        },
+      },
+    } | nb.Synapse,
 }
