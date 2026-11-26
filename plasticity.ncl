@@ -155,4 +155,61 @@ let vgcc_receptor = {
         },
       },
     } | nb.Synapse,
+
+  # A plastic AMPA synapse that learns from a teacher (ReSuMe): while a
+  # model's `TargetRate` output gives the postsynaptic segment a target
+  # firing rate, each presynaptic spike's trace (17 ms) is strengthened
+  # toward that rate and weakened by every postsynaptic spike, so the
+  # synapse settles once the cell fires as asked. Without a target it
+  # stays put. Optional: `learning_rate` (default 0.003), `initial_efficacy`
+  # (default 0.1) and `max_weight` (AMPA conductance multiplier at efficacy
+  # 1, default 2).
+  supervised_synapse = fun args =>
+    {
+      pre_neuron = args.pre_neuron,
+      pre_segment = args.pre_segment,
+      post_neuron = args.post_neuron,
+      post_segment = args.post_segment,
+      synapse_membranes = {
+        cleft_solution = { k = 5.0e-3, na = 145.0e-3, cl = 110.0e-3, ca = 2.5e-3 },
+        presynaptic_pumps = [release],
+        postsynaptic_receptors = [ampa_receptor],
+        surface_area_square_mm = 1.0e-6,
+        transmitter_concentrations = { glutamate_molar = 1.0e-4, gaba_molar = 0.0 },
+        supervised = {
+          spike_threshold_mv = -20.0,
+          pre_trace_sec = 0.017,
+          learning_rate = std.record.get_or "learning_rate" 0.003 args,
+          initial_efficacy = std.record.get_or "initial_efficacy" 0.1 args,
+          weight_at_0 = 0.0,
+          weight_at_1 = std.record.get_or "max_weight" 2.0 args,
+        },
+      },
+    } | nb.Synapse,
+
+  # A fixed inhibitory synapse: GABA opens a K+-selective channel (so it
+  # inhibits even cells resting near -90 mV, below the Cl- reversal).
+  # `strength` multiplies its conductance (default 1).
+  inhibitory_synapse = fun args =>
+    {
+      pre_neuron = args.pre_neuron,
+      pre_segment = args.pre_segment,
+      post_neuron = args.post_neuron,
+      post_segment = args.post_segment,
+      synapse_membranes = {
+        cleft_solution = { k = 5.0e-3, na = 145.0e-3, cl = 110.0e-3, ca = 2.5e-3 },
+        presynaptic_pumps = [{ transmitter = "GABA", transmitter_pump_params = release.transmitter_pump_params }],
+        postsynaptic_receptors = [
+          {
+            membrane_channel = {
+              channel = { ion_selectivity = { k = 1.0, na = 0.0, cl = 0.0, ca = 0.0 }, activation = null, inactivation = null },
+              siemens_per_square_cm = 1000.0 * (std.record.get_or "strength" 1.0 args),
+            },
+            neurotransmitter_sensitivity = { transmitter = "GABA", concentration_at_half_max_molar = 3.0e-3, slope = 2000.0 },
+          },
+        ],
+        surface_area_square_mm = 1.0e-6,
+        transmitter_concentrations = { glutamate_molar = 0.0, gaba_molar = 1.0e-4 },
+      },
+    } | nb.Synapse,
 }
