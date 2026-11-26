@@ -94,6 +94,10 @@ let pyramid = fun k => std.array.at k cells.pyramids in
 let interneuron = fun d => std.array.at d cells.interneurons in
 
 let side = 28 in
+# The retina hangs behind the CNN's layers, which the Models window draws
+# 250 µm apart going back from the cells they drive (14 deep: to about
+# -3.5 mm).
+let retina_z_mm = -4.0 in
 let pixels = std.array.range 0 (side * side) in
 let digits = std.array.range 0 10 in
 let size = 3 in
@@ -217,7 +221,7 @@ let blank = std.array.map (fun _ => 0) pixels in
     {
       neurons =
         std.array.map
-          (fun p => place pixel_cell (((p % side) - side / 2) * 0.04) (1.2 - (std.number.floor (p / side)) * 0.04) (-2.0) false)
+          (fun p => place pixel_cell (((p % side) - side / 2) * 0.04) (1.2 - (std.number.floor (p / side)) * 0.04) retina_z_mm false)
           pixels
         @ std.array.flat_map
           (fun d => std.array.map (fun k => place_at (pyramid k) (cells.pyramid_at d k) true) members)
