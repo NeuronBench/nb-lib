@@ -7,19 +7,27 @@
 #   back, for show) and is read by the MNIST CNN (models/mnist_canvas.onnx:
 #   mnist_softmax.onnx reading the canvas's 0..1 cells, so a cleared
 #   canvas reads as exactly black).
-# - Ten populations, one per digit, of three small three-compartment cells
-#   (as in the digit demos) plus one inhibitory interneuron. The CNN's
-#   probability for digit d injects current into population d's cells.
-#   Every excitatory cell also gets a constant -0.15 * drive: a cleared
-#   canvas gives about 0.1 per class (0.088-0.115), so it drives nothing.
-# - Recurrent self-excitation: each cell excites the other cells of its
-#   population through slow glutamate receptors (NMDA kinetics, 50 ms),
-#   so a population that starts firing keeps itself firing. (Fast AMPA
+# - Ten populations, one per digit, of three pyramidal cells standing
+#   around a common axis, plus one basket-cell interneuron below them (the
+#   shapes are in mnist_wta_cells.ncl). The CNN's probability for digit d
+#   injects current into population d's cells. Every pyramidal cell also
+#   gets a constant -0.15 * drive: a cleared canvas gives about 0.1 per
+#   class (0.088-0.115), so it drives nothing.
+# - Recurrent self-excitation: each pyramidal cell sends an axon
+#   collateral to a basal dendrite of each other cell of its population,
+#   through slow glutamate receptors (NMDA kinetics, 50 ms), so a
+#   population that starts firing keeps itself firing. (Fast AMPA
 #   self-excitation can't: the cells fire together, so each EPSP lands
 #   while they are refractory.)
-# - Lateral inhibition: each population drives its interneuron (fast
-#   AMPA), which inhibits every other population's cells through slow
-#   (20 ms) GABA synapses onto K+-selective channels.
+# - Lateral inhibition: each population's axons descend to its
+#   interneuron's dendrites (fast AMPA). The interneuron's axon climbs to a
+#   horizontal trunk of its own height running under the other
+#   populations, and drops a terminal to each one, ending among the tips
+#   of its cells' inward basal dendrites: slow (20 ms) GABA synapses onto
+#   K+-selective channels.
+#
+# Every synapse joins the end of an axon branch to the end of a dendrite
+# it touches (within 11 µm), so the wiring can be read off the shapes.
 #
 # Paint a digit: its population wins and silences the others. Press Clear
 # in the canvas window: the drive drops to nothing, but the winner keeps
@@ -35,19 +43,22 @@
 #
 #   NB_SIM_DT=1e-5 NB_STEPS_PER_FRAME=1000 NB_SET_PARAMS_AT="0.01:demo=1" NB_SCENE=../nb-lib/demos/mnist_wta.ncl cargo run --release --bin bevy
 #
-# Checked natively that way (GPU kernel: both MNIST test images of every
-# digit; CPU kernel: one of each): the shown digit's population always won
-# alone (about 100 Hz), the old winner fell silent within a few spikes,
-# and the winner kept firing at about 60-70 Hz through 1 s blanks. (The one
-# 5 that the CNN reads as a 6 makes population 6 win.) Without inhibition
-# old winners keep firing beside new ones; self-excitation above about
-# 60000 locks in the first winner for good.
+# Checked natively that way with three-compartment cells (GPU kernel: both
+# MNIST test images of every digit; CPU kernel: one of each): the shown
+# digit's population always won alone (about 100 Hz), the old winner fell
+# silent within a few spikes, and the winner kept firing at about 60-70 Hz
+# through 1 s blanks. (The one 5 that the CNN reads as a 6 makes population
+# 6 win.) Without inhibition old winners keep firing beside new ones;
+# self-excitation above about 60000 locks in the first winner for good.
+# With the shaped cells and the scaling below (GPU kernel, the demo's ten
+# digits twice): every frame right with a unique winner, about 120 Hz
+# while shown and 45 Hz through the 0.3 s blank.
 #
 # Moving a slider respawns the cells, so the memory starts over (the
 # painting stays, unless you move `sample`).
 let plasticity = import "../plasticity.ncl" in
 let channels = import "../channels.ncl" in
-let default_swc_neuron = import "../default_swc_neuron.ncl" in
+let cells = import "mnist_wta_cells.ncl" in
 let samples = import "../models/mnist_samples.ncl" in
 
 # ASCII art (. - + #) to 784 values in 0..1, row-major.
@@ -68,13 +79,19 @@ let pixel_cell = {
     membrane_channels = [{ channel = channels.giant_squid.leak, siemens_per_square_cm = 1.0e-3 }],
   }],
 } in
-# The small three-compartment cell of the digit demos: rests near -90 mV,
-# fires about 40 Hz at 9 µA/cm², 66 Hz at 30 and 94 Hz at 60.
-let cell = default_swc_neuron [
-  { id = 1, x = 0.0, y = 0.0, z = 0.0, r = 0.5, type = 1, parent = -1 },
-  { id = 2, x = 0.0, y = -100, z = 0.0, r = 0.5, type = 2, parent = 1 },
-  { id = 3, x = 0.0, y = 100, z = 0.0, r = 0.5, type = 4, parent = 1 },
-] in
+# Every compartment has the same area whatever its drawn size, so a cell's
+# currents spread over all its compartments: scale what goes into these
+# cells by their capacitance relative to the three-compartment cell of the
+# digit demos (soma 1, axon 1, apical dendrite 2), for which the slider
+# values were found. Currents go into the soma (capacitance 1); synapses
+# end on dendrites (capacitance 2).
+let small_cell = 4 in
+let current_scale = cells.capacitance (std.array.at 0 cells.pyramids) / small_cell in
+let synapse_scale = fun cell => cells.capacitance cell / 2 / small_cell in
+let pyramid_scale = synapse_scale (std.array.at 0 cells.pyramids) in
+let interneuron_scale = synapse_scale (std.array.at 0 cells.interneurons) in
+let pyramid = fun k => std.array.at k cells.pyramids in
+let interneuron = fun d => std.array.at d cells.interneurons in
 
 let side = 28 in
 let pixels = std.array.range 0 (side * side) in
@@ -137,8 +154,8 @@ let blank = std.array.map (fun _ => 0) pixels in
     let slow_receptor = fun weight => scaled plasticity.receptors.nmda weight & {
       binding = { rise_sec = 2.0e-3, decay_sec = 50.0e-3 },
     } in
-    let excite = fun fast slow pre post => {
-      pre_neuron = pre, pre_segment = 0, post_neuron = post, post_segment = 0,
+    let excite = fun fast slow pre pre_seg post post_seg => {
+      pre_neuron = pre, pre_segment = pre_seg, post_neuron = post, post_segment = post_seg,
       synapse_membranes = {
         cleft_solution = { k = 5.0e-3, na = 145.0e-3, cl = 110.0e-3, ca = 2.5e-3 },
         presynaptic_pumps = [plasticity.glutamate_release],
@@ -154,15 +171,15 @@ let blank = std.array.map (fun _ => 0) pixels in
     # at `params.inhibition` times its conductance, and slow like the
     # excitation (unbinding in 20 ms): a 1 ms pulse of K+ conductance only
     # delays a driven cell's next spike.
-    let inhibit = fun pre post => {
-      pre_neuron = pre, pre_segment = 0, post_neuron = post, post_segment = 0,
+    let inhibit = fun pre pre_seg post post_seg => {
+      pre_neuron = pre, pre_segment = pre_seg, post_neuron = post, post_segment = post_seg,
       synapse_membranes = {
         cleft_solution = { k = 5.0e-3, na = 145.0e-3, cl = 110.0e-3, ca = 2.5e-3 },
         presynaptic_pumps = [{ transmitter = "GABA", transmitter_pump_params = plasticity.glutamate_release.transmitter_pump_params }],
         postsynaptic_receptors = [{
           membrane_channel = {
             channel = { ion_selectivity = { k = 1.0, na = 0.0, cl = 0.0, ca = 0.0 }, activation = null, inactivation = null },
-            siemens_per_square_cm = 1000.0 * params.inhibition,
+            siemens_per_square_cm = 1000.0 * params.inhibition * pyramid_scale,
           },
           neurotransmitter_sensitivity = { transmitter = "GABA", concentration_at_half_max_molar = 3.0e-3, slope = 2000.0 },
           binding = { rise_sec = 2.0e-3, decay_sec = 20.0e-3 },
@@ -176,13 +193,19 @@ let blank = std.array.map (fun _ => 0) pixels in
       envelope = { period_sec = 1.0, onset_sec = 0.0, offset_sec = 1.0 },
       current_shape = {
         type = 'SquareWave,
-        on_current_uamps_per_square_cm = -0.15 * params.drive,
-        off_current_uamps_per_square_cm = -0.15 * params.drive,
+        on_current_uamps_per_square_cm = -0.15 * params.drive * current_scale,
+        off_current_uamps_per_square_cm = -0.15 * params.drive * current_scale,
       },
     } in
     let place = fun n x y z stimulated => {
       neuron = n,
       location = { x_mm = x, y_mm = y, z_mm = z },
+      stimulator_segments = if stimulated then [{ segment = 1, stimulator = bias }] else [],
+    } in
+    # A shaped cell at a position in µm.
+    let place_at = fun cell at stimulated => {
+      neuron = cell.neuron,
+      location = { x_mm = at.x / 1000, y_mm = at.y / 1000, z_mm = at.z / 1000 },
       stimulator_segments = if stimulated then [{ segment = 1, stimulator = bias }] else [],
     } in
     let demo = params.demo >= 0.5 in
@@ -197,24 +220,46 @@ let blank = std.array.map (fun _ => 0) pixels in
           (fun p => place pixel_cell (((p % side) - side / 2) * 0.04) (1.2 - (std.number.floor (p / side)) * 0.04) (-2.0) false)
           pixels
         @ std.array.flat_map
-          (fun d => std.array.map (fun k => place cell (d * 0.3 - 1.35) (k * 0.15) 0.0 true) members)
+          (fun d => std.array.map (fun k => place_at (pyramid k) (cells.pyramid_at d k) true) members)
           digits
-        @ std.array.map (fun d => place cell (d * 0.3 - 1.35) (-0.3) 0.0 false) digits,
+        @ std.array.map (fun d => place_at (interneuron d) (cells.interneuron_at d) false) digits,
       synapses =
-        # Self-excitation within each population.
+        # Self-excitation within each population: member j's axon
+        # collateral toward k ends on k's basal dendrite toward j.
         std.array.flat_map
           (fun d =>
             std.array.flat_map
-              (fun j => std.array.map (fun k => excite 0 params.self_excitation (member d j) (member d k)) (std.array.filter (fun k => k != j) members))
+              (fun j =>
+                std.array.map
+                  (fun k =>
+                    excite 0 (params.self_excitation * pyramid_scale)
+                      (member d j) ((pyramid j).at (cells.collateral k))
+                      (member d k) ((pyramid k).at (cells.toward j)))
+                  (std.array.filter (fun k => k != j) members))
               members)
           digits
-        # Each population drives its interneuron...
-        @ std.array.flat_map (fun d => std.array.map (fun k => excite 1500 0 (member d k) (first_interneuron + d)) members) digits
-        # ...which inhibits every other population.
+        # Each population's axons end on its interneuron's up-dendrites...
+        @ std.array.flat_map
+          (fun d =>
+            std.array.map
+              (fun k =>
+                excite (1500 * interneuron_scale) 0
+                  (member d k) ((pyramid k).at cells.axon_end)
+                  (first_interneuron + d) ((interneuron d).at (cells.up k)))
+              members)
+          digits
+        # ...and its interneuron's terminal at each other population ends
+        # among that population's inward basal dendrites.
         @ std.array.flat_map
           (fun d =>
             std.array.flat_map
-              (fun e => std.array.map (fun k => inhibit (first_interneuron + d) (member e k)) members)
+              (fun e =>
+                std.array.map
+                  (fun k =>
+                    inhibit
+                      (first_interneuron + d) ((interneuron d).at (cells.terminal e))
+                      (member e k) ((pyramid k).at cells.inward))
+                  members)
               (std.array.filter (fun e => e != d) digits))
           digits,
       canvases = [
@@ -261,7 +306,7 @@ let blank = std.array.map (fun _ => 0) pixels in
               output = {
                 type = 'InjectCurrent,
                 taps = std.array.flat_map (fun d => std.array.map (fun k => soma (member d k)) members) digits,
-                scale_uamps_per_square_cm = params.drive,
+                scale_uamps_per_square_cm = params.drive * current_scale,
               },
             },
           ],
