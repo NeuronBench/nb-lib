@@ -7,17 +7,20 @@
 #   `digits` canvas). The ANN sees the same images.
 # - 32 hidden cells: input -> hidden synapses, all excitatory and plastic.
 # - 10 output cells, one per digit: hidden -> output synapses, plastic.
-# - Two inhibitory interneurons, one per layer, excited by the whole layer
-#   below and inhibiting every cell of the layer above (feedforward
-#   inhibition): what lets excitatory-only synapses act like the ANN's
-#   negative weights.
+# - An inhibitory partner for every input and hidden cell, which fires
+#   when its partner does and inhibits the layer above through plastic
+#   synapses of its own. Real neurons are excitatory or inhibitory, never
+#   both, so this is how the realistic network gets the ANN's negative
+#   weights: input cell i excites hidden cell h with one learned weight
+#   and, through its partner, inhibits it with another.
 #
 # The ANN is the teacher. Its hidden layer gives each hidden cell a target
 # firing rate, and its output probabilities give each output cell one
 # (`TargetRate`: nothing is injected). The plastic synapses learn by ReSuMe
-# (plasticity.supervised_synapse): strengthened toward the target rate in
-# proportion to the presynaptic trace, weakened by each spike the cell
-# fires, so learning stops when every cell fires as its ANN unit asks.
+# (plasticity.supervised_synapse): an excitatory synapse strengthens while
+# its cell fires below the target rate and weakens while it fires above,
+# in proportion to the presynaptic trace; an inhibitory one does the
+# opposite. Learning stops when every cell fires as its ANN unit asks.
 #
 # The Readouts window scores the output cells: the one with the most spikes
 # during an image is the realistic network's answer. To see what was
@@ -48,8 +51,9 @@ let digits = std.array.range 0 10 in
 # Neuron indices.
 let first_hidden = side * side in
 let first_digit = first_hidden + 32 in
-let hidden_inhibitor = first_digit + 10 in
-let digit_inhibitor = hidden_inhibitor + 1 in
+# Inhibitory partners of the input cells, then of the hidden cells.
+let first_input_partner = first_digit + 10 in
+let first_hidden_partner = first_input_partner + side * side in
 let soma = fun n => { neuron = n, segment = 1 } in
 let place = fun x y z => {
   neuron = cell,
@@ -76,51 +80,64 @@ let place = fun x y z => {
       | default = 60,
     max_rate
       | nb.Slider { min = 10, max = 150 }
-      | doc "Target rate (Hz) for a digit of probability 1, and for the largest hidden value"
+      | doc "Target rate (Hz) for a digit of probability 1"
       | default = 80,
+    hidden_rate
+      | nb.Slider { min = 1, max = 60 }
+      | doc "Target rate (Hz) per unit of an ANN hidden value (typical active values are 1-3, the largest about 7; the cells top out near 150 Hz)"
+      | default = 15,
     learning_rate
       | nb.Slider { min = 0, max = 0.02 }
-      | doc "ReSuMe rate: efficacy change per unit of presynaptic trace per missing (or extra) spike"
+      | doc "ReSuMe rate of the input -> hidden synapses: efficacy change per unit of presynaptic trace per missing (or extra) spike"
       | default = 0.003,
     max_weight
       | nb.Slider { min = 10, max = 2000 }
-      | doc "AMPA conductance multiplier of a plastic synapse at efficacy 1 (about 1000 makes one 94 Hz input drive a cell on its own)"
+      | doc "AMPA conductance multiplier of an input -> hidden synapse at efficacy 1 (about 1000 makes one 94 Hz input drive a cell on its own)"
       | default = 400,
+    output_learning_rate
+      | nb.Slider { min = 0, max = 0.1 }
+      | doc "ReSuMe rate of the hidden -> digit synapses (hidden cells fire sparsely, so their traces are small)"
+      | default = 0.003,
+    output_max_weight
+      | nb.Slider { min = 10, max = 4000 }
+      | doc "AMPA conductance multiplier of a hidden -> digit synapse at efficacy 1"
+      | default = 1000,
     inhibition
-      | nb.Slider { min = 0, max = 2000 }
-      | doc "Strength of each interneuron's synapses onto the layer above"
-      | default = 300,
+      | nb.Slider { min = 0, max = 4 }
+      | doc "Conductance at efficacy 1 of a plastic inhibitory synapse, relative to the excitatory synapses of the same layer"
+      | default = 1,
   },
 
   scene | nb.Scene =
     let images = if params.stream < 0.5 then stream.train else stream.test in
-    let plastic = fun pre post => plasticity.supervised_synapse {
+    let plastic = fun rate weight pre post => plasticity.supervised_synapse {
       pre_neuron = pre, pre_segment = 0, post_neuron = post, post_segment = 0,
-      learning_rate = params.learning_rate, initial_efficacy = 0.05, max_weight = params.max_weight,
+      learning_rate = rate, initial_efficacy = 0.05, max_weight = weight,
     } in
-    # A fixed excitatory synapse onto an interneuron (a supervised synapse
-    # that never learns).
-    let onto_inhibitor = fun pre post => plasticity.supervised_synapse {
+    # A cell drives its inhibitory partner one to one: a fixed synapse
+    # strong enough (about 3000) for the partner to follow every spike.
+    let onto_partner = fun pre post => plasticity.supervised_synapse {
       pre_neuron = pre, pre_segment = 0, post_neuron = post, post_segment = 0,
-      learning_rate = 0, initial_efficacy = 1, max_weight = 200,
+      learning_rate = 0, initial_efficacy = 1, max_weight = 3000,
     } in
-    let inhibit = fun pre post => plasticity.inhibitory_synapse {
+    let inhibit = fun rate weight pre post => plasticity.inhibitory_synapse {
       pre_neuron = pre, pre_segment = 0, post_neuron = post, post_segment = 0,
-      strength = params.inhibition,
+      learning_rate = rate, strength = weight * params.inhibition,
     } in
     {
       neurons =
         std.array.map (fun p => place ((p % side) * 0.15 - 0.5) (0.5 - (std.number.floor (p / side)) * 0.15) (-2.0)) pixels
         @ std.array.map (fun h => place (h * 0.1 - 1.6) 0.0 (-1.0)) hiddens
         @ std.array.map (fun d => place (d * 0.3 - 1.35) 0.0 0.0) digits
-        @ [place 1.9 0.0 (-1.5), place 1.9 0.0 (-0.5)],
+        @ std.array.map (fun p => place ((p % side) * 0.15 - 0.5) (0.5 - (std.number.floor (p / side)) * 0.15) (-2.3)) pixels
+        @ std.array.map (fun h => place (h * 0.1 - 1.6) (-0.3) (-1.0)) hiddens,
       synapses =
-        std.array.flat_map (fun h => std.array.map (fun p => plastic p (first_hidden + h)) pixels) hiddens
-        @ std.array.flat_map (fun d => std.array.map (fun h => plastic (first_hidden + h) (first_digit + d)) hiddens) digits
-        @ std.array.map (fun p => onto_inhibitor p hidden_inhibitor) pixels
-        @ std.array.map (fun h => inhibit hidden_inhibitor (first_hidden + h)) hiddens
-        @ std.array.map (fun h => onto_inhibitor (first_hidden + h) digit_inhibitor) hiddens
-        @ std.array.map (fun d => inhibit digit_inhibitor (first_digit + d)) digits,
+        std.array.flat_map (fun h => std.array.map (fun p => plastic params.learning_rate params.max_weight p (first_hidden + h)) pixels) hiddens
+        @ std.array.flat_map (fun d => std.array.map (fun h => plastic params.output_learning_rate params.output_max_weight (first_hidden + h) (first_digit + d)) hiddens) digits
+        @ std.array.map (fun p => onto_partner p (first_input_partner + p)) pixels
+        @ std.array.map (fun h => onto_partner (first_hidden + h) (first_hidden_partner + h)) hiddens
+        @ std.array.flat_map (fun h => std.array.map (fun p => inhibit params.learning_rate params.max_weight (first_input_partner + p) (first_hidden + h)) pixels) hiddens
+        @ std.array.flat_map (fun d => std.array.map (fun h => inhibit params.output_learning_rate params.output_max_weight (first_hidden_partner + h) (first_digit + d)) hiddens) digits,
       canvases = [
         {
           name = "digits",
@@ -147,6 +164,13 @@ let place = fun x y z => {
           spike_threshold_mv = -20,
           labeled = false,
         },
+        {
+          name = "hidden partners",
+          taps = std.array.map (fun h => soma (first_hidden_partner + h)) hiddens,
+          canvas = "digits",
+          spike_threshold_mv = -20,
+          labeled = false,
+        },
       ],
       models =
         if params.teacher < 0.5 then []
@@ -165,7 +189,7 @@ let place = fun x y z => {
                 output = {
                   type = 'TargetRate,
                   taps = std.array.map (fun h => soma (first_hidden + h)) hiddens,
-                  scale_hz = params.max_rate / stream.hidden_max,
+                  scale_hz = params.hidden_rate,
                 },
               },
             ],

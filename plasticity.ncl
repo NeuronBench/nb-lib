@@ -187,9 +187,13 @@ let vgcc_receptor = {
       },
     } | nb.Synapse,
 
-  # A fixed inhibitory synapse: GABA opens a K+-selective channel (so it
+  # An inhibitory synapse: GABA opens a K+-selective channel (so it
   # inhibits even cells resting near -90 mV, below the Cl- reversal).
-  # `strength` multiplies its conductance (default 1).
+  # `strength` multiplies its conductance (default 1). With a
+  # `learning_rate` it learns from a teacher like supervised_synapse, with
+  # the sign flipped: it strengthens while the cell fires above its target
+  # rate. `strength` is then its conductance multiplier at efficacy 1, and
+  # `initial_efficacy` (default 0.05) where it starts.
   inhibitory_synapse = fun args =>
     {
       pre_neuron = args.pre_neuron,
@@ -203,13 +207,27 @@ let vgcc_receptor = {
           {
             membrane_channel = {
               channel = { ion_selectivity = { k = 1.0, na = 0.0, cl = 0.0, ca = 0.0 }, activation = null, inactivation = null },
-              siemens_per_square_cm = 1000.0 * (std.record.get_or "strength" 1.0 args),
+              siemens_per_square_cm =
+                if std.record.has_field "learning_rate" args then 1000.0
+                else 1000.0 * (std.record.get_or "strength" 1.0 args),
             },
             neurotransmitter_sensitivity = { transmitter = "GABA", concentration_at_half_max_molar = 3.0e-3, slope = 2000.0 },
+            plastic = std.record.has_field "learning_rate" args,
           },
         ],
         surface_area_square_mm = 1.0e-6,
         transmitter_concentrations = { glutamate_molar = 0.0, gaba_molar = 1.0e-4 },
+        supervised =
+          if std.record.has_field "learning_rate" args then
+            {
+              spike_threshold_mv = -20.0,
+              pre_trace_sec = 0.017,
+              learning_rate = -args.learning_rate,
+              initial_efficacy = std.record.get_or "initial_efficacy" 0.05 args,
+              weight_at_0 = 0.0,
+              weight_at_1 = std.record.get_or "strength" 1.0 args,
+            }
+          else null,
       },
     } | nb.Synapse,
 }
